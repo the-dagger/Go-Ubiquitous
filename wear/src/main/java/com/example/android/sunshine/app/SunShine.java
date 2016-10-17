@@ -21,11 +21,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -36,10 +39,17 @@ import android.support.wearable.watchface.WatchFaceStyle;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
-import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEvent;
+import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.DataItemBuffer;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
@@ -61,6 +71,11 @@ public class SunShine extends CanvasWatchFaceService {
      */
     private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
 
+    Double highTemp = 0d;
+    Double lowTemp = 0d;
+    String desc = "";
+    int weatherId = 0;
+    Bitmap weatherIcon;
     /**
      * Handler message id for updating the time periodically in interactive mode.
      */
@@ -91,11 +106,12 @@ public class SunShine extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks,GoogleApiClient.OnConnectionFailedListener{
+    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
         Paint mBackgroundPaint;
         Paint mTextPaint;
+        Paint mWeatherPaint;
         boolean mAmbient;
         Calendar mCalendar;
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
@@ -132,8 +148,12 @@ public class SunShine extends CanvasWatchFaceService {
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.background));
 
+
             mTextPaint = new Paint();
             mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
+
+            mWeatherPaint = new Paint();
+            mWeatherPaint = createTextPaint(resources.getColor(R.color.digital_text));
 
             mCalendar = Calendar.getInstance();
             googleApiClient = new GoogleApiClient.Builder(SunShine.this)
@@ -141,6 +161,7 @@ public class SunShine extends CanvasWatchFaceService {
                     .addConnectionCallbacks(this)
                     .addOnConnectionFailedListener(this)
                     .build();
+            googleApiClient.connect();
         }
 
         @Override
@@ -204,8 +225,11 @@ public class SunShine extends CanvasWatchFaceService {
                     ? R.dimen.digital_x_offset_round : R.dimen.digital_x_offset);
             float textSize = resources.getDimension(isRound
                     ? R.dimen.digital_text_size_round : R.dimen.digital_text_size);
+            float weatherSize = resources.getDimension(isRound
+                    ? R.dimen.weather_text_size_round : R.dimen.weather_text_size);
 
             mTextPaint.setTextSize(textSize);
+            mWeatherPaint.setTextSize(weatherSize);
         }
 
         @Override
@@ -240,24 +264,6 @@ public class SunShine extends CanvasWatchFaceService {
          * Captures tap event (and tap type) and toggles the background color if the user finishes
          * a tap.
          */
-        @Override
-        public void onTapCommand(int tapType, int x, int y, long eventTime) {
-            switch (tapType) {
-                case TAP_TYPE_TOUCH:
-                    // The user has started touching the screen.
-                    break;
-                case TAP_TYPE_TOUCH_CANCEL:
-                    // The user has started a different gesture or otherwise cancelled the tap.
-                    break;
-                case TAP_TYPE_TAP:
-                    // The user has completed the tap gesture.
-                    // TODO: Add code to handle the tap gesture.
-                    Toast.makeText(getApplicationContext(), R.string.message, Toast.LENGTH_SHORT)
-                            .show();
-                    break;
-            }
-            invalidate();
-        }
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
@@ -278,6 +284,11 @@ public class SunShine extends CanvasWatchFaceService {
                     : String.format("%d:%02d:%02d", mCalendar.get(Calendar.HOUR),
                     mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
             canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
+            canvas.drawText("High : " + highTemp.intValue(), mXOffset, (float) (1.4 * mYOffset), mWeatherPaint);
+            canvas.drawText("Low : " + lowTemp.intValue(), mXOffset, (float) (1.7 * mYOffset), mWeatherPaint);
+            canvas.drawText(desc, mXOffset, (float) (2.0 * mYOffset), mWeatherPaint);
+            if (weatherIcon != null && !isInAmbientMode())
+                canvas.drawBitmap(weatherIcon, 7 * mXOffset, (float) (1.4 * mYOffset), null);
         }
 
         /**
@@ -288,6 +299,47 @@ public class SunShine extends CanvasWatchFaceService {
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
             if (shouldTimerBeRunning()) {
                 mUpdateTimeHandler.sendEmptyMessage(MSG_UPDATE_TIME);
+            }
+        }
+
+        private final DataApi.DataListener onDataChangedListener = new DataApi.DataListener() {
+            @Override
+            public void onDataChanged(DataEventBuffer dataEvents) {
+                for (DataEvent event : dataEvents) {
+                    if (event.getType() == DataEvent.TYPE_CHANGED) {
+                        DataItem item = event.getDataItem();
+                        processConfigurationFor(item);
+                    }
+                }
+
+                dataEvents.release();
+                invalidate();
+            }
+        };
+
+        private void processConfigurationFor(DataItem item) {
+            if ("/weather_data".equals(item.getUri().getPath())) {
+                DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
+                if (dataMap.containsKey("HIGH_TEMP")) {
+                    highTemp = dataMap.getDouble("HIGH_TEMP");
+                    Log.e("HighTemp", highTemp.toString());
+                }
+
+                if (dataMap.containsKey("LOW_TEMP")) {
+                    lowTemp = dataMap.getDouble("LOW_TEMP");
+                    Log.e("LowTemp", lowTemp.toString());
+                }
+
+                if (dataMap.containsKey("DESC")) {
+                    desc = dataMap.getString("DESC");
+                }
+
+                if (dataMap.containsKey("ICON")) {
+                    weatherId = dataMap.getInt("ICON");
+                    updateWeathericon();
+                    Log.e("Icon", String.valueOf(weatherId));
+                }
+                invalidate();
             }
         }
 
@@ -314,17 +366,65 @@ public class SunShine extends CanvasWatchFaceService {
 
         @Override
         public void onConnected(@Nullable Bundle bundle) {
-            Log.e("Connected","Connected");
+            Log.e("Connected", "Connected");
+            Wearable.DataApi.addListener(googleApiClient, onDataChangedListener);
+            Wearable.DataApi.getDataItems(googleApiClient).setResultCallback(onConnectedResultCallback);
+            invalidate();
         }
 
         @Override
         public void onConnectionSuspended(int i) {
-            Log.e("Connection Suspended","Connection Suspended");
+            Log.e("Connection Suspended", "Connection Suspended");
         }
 
         @Override
         public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
 
         }
+
+        private void updateWeathericon() {
+            Resources resources = SunShine.this.getResources();
+            Drawable weatherBitmap;
+
+            if (weatherId >= 200 && weatherId <= 232) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_storm, null);
+            } else if (weatherId >= 300 && weatherId <= 321) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_light_rain, null);
+            } else if (weatherId >= 500 && weatherId <= 504) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_rain, null);
+            } else if (weatherId == 511) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_snow, null);
+            } else if (weatherId >= 520 && weatherId <= 531) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_rain, null);
+            } else if (weatherId >= 600 && weatherId <= 622) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_snow, null);
+            } else if (weatherId >= 701 && weatherId <= 761) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_fog, null);
+            } else if (weatherId == 761 || weatherId == 781) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_storm, null);
+            } else if (weatherId == 800) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_clear, null);
+            } else if (weatherId == 801) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_light_clouds, null);
+            } else if (weatherId >= 802 && weatherId <= 804) {
+                weatherBitmap = resources.getDrawable(R.drawable.ic_cloudy, null);
+            } else { //default
+                weatherBitmap = resources.getDrawable(R.drawable.ic_clear, null);
+            }
+
+            weatherIcon = ((BitmapDrawable) weatherBitmap).getBitmap();
+        }
+
+        private final ResultCallback<DataItemBuffer> onConnectedResultCallback = new ResultCallback<DataItemBuffer>() {
+            @Override
+            public void onResult(DataItemBuffer dataItems) {
+                for (DataItem item : dataItems) {
+                    processConfigurationFor(item);
+                }
+
+                dataItems.release();
+                invalidate();
+            }
+        };
     }
 }
