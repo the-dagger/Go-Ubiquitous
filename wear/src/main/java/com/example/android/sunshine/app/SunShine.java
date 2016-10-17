@@ -53,6 +53,7 @@ import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.Wearable;
 
 import java.lang.ref.WeakReference;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
@@ -70,7 +71,7 @@ public class SunShine extends CanvasWatchFaceService {
      * displayed in interactive mode.
      */
     private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
-
+    SimpleDateFormat df;
     Double highTemp = 0d;
     Double lowTemp = 0d;
     String desc = "";
@@ -148,7 +149,7 @@ public class SunShine extends CanvasWatchFaceService {
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.background));
 
-
+            df = new SimpleDateFormat("dd MMM");
             mTextPaint = new Paint();
             mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
 
@@ -288,7 +289,13 @@ public class SunShine extends CanvasWatchFaceService {
             canvas.drawText("Low : " + lowTemp.intValue(), mXOffset, (float) (1.7 * mYOffset), mWeatherPaint);
             canvas.drawText(desc, mXOffset, (float) (2.0 * mYOffset), mWeatherPaint);
             if (weatherIcon != null && !isInAmbientMode())
-                canvas.drawBitmap(weatherIcon, 7 * mXOffset, (float) (1.4 * mYOffset), null);
+                canvas.drawBitmap(weatherIcon, (float) 7.5 * mXOffset, (float) (1.3 * mYOffset), null);
+            if (isInAmbientMode()) {
+                canvas.drawText(df.format(mCalendar.getTime()), 7 * mXOffset, mYOffset, mWeatherPaint);
+            }
+            if(!isInAmbientMode()){
+                canvas.drawText(df.format(mCalendar.getTime()), 7 * mXOffset, (float) (2.0 * mYOffset), mWeatherPaint);
+            }
         }
 
         /**
