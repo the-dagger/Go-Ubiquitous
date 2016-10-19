@@ -65,6 +65,7 @@ import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 
 public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+    private static final String ICON = "ICON";
     public final String LOG_TAG = SunshineSyncAdapter.class.getSimpleName();
     public static final String ACTION_DATA_UPDATED =
             "com.example.android.sunshine.app.ACTION_DATA_UPDATED";
@@ -74,7 +75,9 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter implements 
     public static final int SYNC_FLEXTIME = SYNC_INTERVAL / 3;
     private static final long DAY_IN_MILLIS = 1000 * 60 * 60 * 24;
     private static final int WEATHER_NOTIFICATION_ID = 3004;
-
+    private static final String HIGH_TEMP = "HIGH_TEMP";
+    private static final String LOW_TEMP = "LOW_TEMP";
+    private static final String DESC = "DESC";
 
     private static final String[] NOTIFY_WEATHER_PROJECTION = new String[]{
             WeatherContract.WeatherEntry.COLUMN_WEATHER_ID,
@@ -417,41 +420,15 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter implements 
         double high = cursor.getDouble(INDEX_MAX_TEMP);
         double low = cursor.getDouble(INDEX_MIN_TEMP);
         String desc = cursor.getString(INDEX_SHORT_DESC);
-        putDataMapReq.getDataMap().putDouble("HIGH_TEMP", high);
-        putDataMapReq.getDataMap().putDouble("LOW_TEMP", low);
-        putDataMapReq.getDataMap().putString("DESC", desc);
-        int iconId = Utility.getIconResourceForWeatherCondition(weatherId);
-        Resources resources = context.getResources();
+        putDataMapReq.getDataMap().putDouble(HIGH_TEMP, high);
+        putDataMapReq.getDataMap().putDouble(LOW_TEMP, low);
+        putDataMapReq.getDataMap().putString(DESC, desc);
         int artResourceId = Utility.getArtResourceForWeatherCondition(weatherId);
-
-        String artUrl = Utility.getArtUrlForWeatherCondition(context, weatherId);
-
         Log.e("artresourceId", String.valueOf(artResourceId));
         // On Honeycomb and higher devices, we can retrieve the size of the large icon
         // Prior to that, we use a fixed size
-        @SuppressLint("InlinedApi")
-        int largeIconWidth = Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB
-                ? resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width)
-                : resources.getDimensionPixelSize(R.dimen.notification_large_icon_default);
-        @SuppressLint("InlinedApi")
-        int largeIconHeight = Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB
-                ? resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_height)
-                : resources.getDimensionPixelSize(R.dimen.notification_large_icon_default);
-
         // Retrieve the large icon
-        Bitmap largeIcon;
-        try {
-            largeIcon = Glide.with(context)
-                    .load(artUrl)
-                    .asBitmap()
-                    .error(artResourceId)
-                    .fitCenter()
-                    .into(largeIconWidth, largeIconHeight).get();
-        } catch (InterruptedException | ExecutionException e) {
-            Log.e(LOG_TAG, "Error retrieving large icon from " + artUrl, e);
-            largeIcon = BitmapFactory.decodeResource(resources, artResourceId);
-        }
-        putDataMapReq.getDataMap().putInt("ICON", weatherId);
+        putDataMapReq.getDataMap().putInt(ICON, weatherId);
         PutDataRequest putDataReq = putDataMapReq.asPutDataRequest();
         Wearable.DataApi.putDataItem(googleApiClient, putDataReq).setResultCallback(new ResultCallbacks<DataApi.DataItemResult>() {
             @Override

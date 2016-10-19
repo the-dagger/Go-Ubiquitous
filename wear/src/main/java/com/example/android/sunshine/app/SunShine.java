@@ -190,6 +190,10 @@ public class SunShine extends CanvasWatchFaceService {
                 mCalendar.setTimeZone(TimeZone.getDefault());
                 invalidate();
             } else {
+                if (googleApiClient != null && googleApiClient.isConnected()) {
+                    Wearable.DataApi.removeListener(googleApiClient, this.onDataChangedListener);
+                    googleApiClient.disconnect();
+                }
                 unregisterReceiver();
             }
 
@@ -289,12 +293,12 @@ public class SunShine extends CanvasWatchFaceService {
             canvas.drawText("Low : " + lowTemp.intValue(), mXOffset, (float) (1.7 * mYOffset), mWeatherPaint);
             canvas.drawText(desc, mXOffset, (float) (2.0 * mYOffset), mWeatherPaint);
             if (weatherIcon != null && !isInAmbientMode())
-                canvas.drawBitmap(weatherIcon, (float) 7.5 * mXOffset, (float) (1.3 * mYOffset), null);
+                canvas.drawBitmap(weatherIcon, (float) (bounds.width()/1.6), (float) (1.3 * mYOffset), null);
             if (isInAmbientMode()) {
-                canvas.drawText(df.format(mCalendar.getTime()), 7 * mXOffset, mYOffset, mWeatherPaint);
+                canvas.drawText(df.format(mCalendar.getTime()), (float) (bounds.width()/1.8), mYOffset, mWeatherPaint);
             }
             if(!isInAmbientMode()){
-                canvas.drawText(df.format(mCalendar.getTime()), 7 * mXOffset, (float) (2.0 * mYOffset), mWeatherPaint);
+                canvas.drawText(df.format(mCalendar.getTime()), (float) (bounds.width()/1.8), (float) (2.0 * mYOffset), mWeatherPaint);
             }
         }
 
